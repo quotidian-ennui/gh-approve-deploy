@@ -18,20 +18,28 @@ gh extension install quotidian-ennui/gh-approve-deploy
 
 ## Usage
 
-Assuming that you have an existing workflow that is in a state "waiting" because it needs your approval before continuing...
+Assuming that you have an existing workflow that is in a state "waiting" because it needs your approval before continuing... Help is minimal, just inspect the script, it's really not that complicated.
 
 ```
 cd $DIRECTORY_OF_YOUR_REPO
 gh approve-deploy -e 'environment' -w 'workflow-name'
 ```
 
-### Required arguments
+```
+bsh ❯ gh approve-deploy
+
+Usage: gh approve-deploy -e "environment" -w "workflow-name"
+  Required arguments
   -e  The environment requiring approval
   -w  The workflow name
 
-### Optional arguments
+  Optional arguments:
   -b The branch name (default is the default branch)
   -c Comment for the approval (default is 'deploy it')
+
+EXAMPLES
+gh approve-deploy -e "production" -w "deploy-to-prod"
+```
 
 ## License
 

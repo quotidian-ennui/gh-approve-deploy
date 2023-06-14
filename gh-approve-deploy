@@ -58,4 +58,4 @@ TARGET_ENV=$(gh api \
   repos/:owner/:repo/environments | jq ".environments[] | select(.name==\"$environment\") | .id")
 
 RUN_ID=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
-approval_payload "$TARGET_ENV" "$comment" | gh api --method POST -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" repos/:owner/:repo/actions/runs/$RUN_ID/pending_deployments --input -
+approval_payload "$TARGET_ENV" "$comment" | gh api --silent --method POST -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" repos/:owner/:repo/actions/runs/$RUN_ID/pending_deployments --input -
