@@ -36,6 +36,7 @@ Usage: gh approve-deploy -e "environment" -w "workflow-name"
   Optional arguments:
   -b The branch name (default is the default branch)
   -c Comment for the approval (default is 'deploy it')
+  -l list workflow runs in a 'waiting' state
 
 EXAMPLES
 gh approve-deploy -e "production" -w "deploy-to-prod"

@@ -16,6 +16,7 @@ Usage: gh approve-deploy -e "environment" -w "workflow-name"
   Optional arguments:
   -b The branch name (default is the default branch)
   -c Comment for the approval (default is 'deploy it')
+  -l list workflow runs in a 'waiting' state
 
 EXAMPLES
 gh approve-deploy -e "production" -w "deploy-to-prod"
@@ -32,13 +33,15 @@ environment=''
 workflow_name=''
 branch_name=$(gh api /repos/:owner/:repo --jq '.default_branch')
 comment="deploy it"
+list="false"
 
-while getopts 'e:w:b:c:' flag; do
+while getopts 'e:w:b:c:l' flag; do
     case "${flag}" in
     e) environment="${OPTARG}" ;;
     w) workflow_name="${OPTARG}" ;;
     b) branch_name="${OPTARG}" ;;
     c) comment="${OPTARG}" ;;
+    l) list="true" ;;
     *)
      usage
      exit 1
@@ -46,16 +49,20 @@ while getopts 'e:w:b:c:' flag; do
     esac
 done
 
-if [[ "${workflow_name}" == "" && "${workflow_name}" == "" ]]; then
+if [[ "${workflow_name}" == "" && "${environment}" == "" ]]; then
   usage
   exit 1
 fi
 
 
-TARGET_ENV=$(gh api \
-    -H "$GH_REST_API_VERSION" \
-    -H "$GH_ACCEPT" \
-  repos/:owner/:repo/environments | jq ".environments[] | select(.name==\"$environment\") | .id")
+if [[ "${list}" == "true" ]]; then
+  gh run list -b "$branch_name" -w "$workflow_name" -s "waiting"
+else
+  TARGET_ENV=$(gh api \
+      -H "$GH_REST_API_VERSION" \
+      -H "$GH_ACCEPT" \
+    repos/:owner/:repo/environments | jq ".environments[] | select(.name==\"$environment\") | .id")
 
-RUN_ID=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
-approval_payload "$TARGET_ENV" "$comment" | gh api --silent --method POST -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" repos/:owner/:repo/actions/runs/$RUN_ID/pending_deployments --input -
+  RUN_ID=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
+  approval_payload "$TARGET_ENV" "$comment" | gh api --silent --method POST -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" repos/:owner/:repo/actions/runs/"$RUN_ID"/pending_deployments --input -
+fi
