@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -eo pipefail
+
+GH_REST_API_VERSION="X-GitHub-Api-Version: 2022-11-28"
+GH_ACCEPT="Accept: application/vnd.github+json"
+export GH_PAGER="cat"
+
+usage() {
+  cat << EOF
+
+Usage: gh approve-deploy -e "environment" -w "workflow-name"
+  Required arguments
+  -e  The environment requiring approval
+  -w  The workflow name
+
+  Optional arguments:
+  -b The branch name (default is the default branch)
+  -c Comment for the approval (default is 'deploy it')
+
+EXAMPLES
+gh approve-deploy -e "production" -w "deploy-to-prod"
+
+EOF
+}
+
+function approval_payload() {
+  printf "{\"environment_ids\": [%s], \"state\":\"approved\", \"comment\": \"$2\"}" "$1"
+}
+
+
+environment=''
+workflow_name=''
+branch_name=$(gh api /repos/:owner/:repo --jq '.default_branch')
+comment="deploy it"
+
+while getopts 'e:w:b:c:' flag; do
+    case "${flag}" in
+    e) environment="${OPTARG}" ;;
+    w) workflow_name="${OPTARG}" ;;
+    b) branch_name="${OPTARG}" ;;
+    c) comment="${OPTARG}" ;;
+    *)
+     usage
+     exit 1
+     ;;
+    esac
+done
+
+if [[ "${workflow_name}" == "" && "${workflow_name}" == "" ]]; then
+  usage
+  exit 1
+fi
+
+
+TARGET_ENV=$(gh api \
+    -H "$GH_REST_API_VERSION" \
+    -H "$GH_ACCEPT" \
+  repos/:owner/:repo/environments | jq ".environments[] | select(.name==\"$environment\") | .id")
+
+RUN_ID=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
+approval_payload "$TARGET_ENV" "$comment" | gh api --method POST -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" repos/:owner/:repo/actions/runs/$RUN_ID/pending_deployments --input -
