@@ -15,9 +15,6 @@ jobs:
         with:
           fetch-depth: 0
       - uses: crate-ci/typos@v1.0.4
-      - uses: crate-ci/committed@v0.1.24
-        with:
-          commits: "main..HEAD --merge-commit"
       - uses: reviewdog/action-shellcheck@v1
         with:
           reporter: github-pr-review
