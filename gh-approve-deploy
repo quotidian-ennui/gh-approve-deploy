@@ -29,19 +29,31 @@ function approval_payload() {
 }
 
 
+gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner")
+
+if [[ "$gh_repo" == "" ]]; then
+  echo "I don't appear to be in a repo that's attached to github..."
+  usage
+  exit 1
+fi
+
 environment=''
 workflow_name=''
 branch_name=$(gh api /repos/:owner/:repo --jq '.default_branch')
 comment="deploy it"
 list="false"
 
-while getopts 'e:w:b:c:l' flag; do
+while getopts 'e:w:b:c:lh' flag; do
     case "${flag}" in
     e) environment="${OPTARG}" ;;
     w) workflow_name="${OPTARG}" ;;
     b) branch_name="${OPTARG}" ;;
     c) comment="${OPTARG}" ;;
     l) list="true" ;;
+    h)
+      usage
+      exit 1
+      ;;
     *)
      usage
      exit 1
@@ -49,20 +61,18 @@ while getopts 'e:w:b:c:l' flag; do
     esac
 done
 
-if [[ "${workflow_name}" == "" && "${environment}" == "" ]]; then
-  usage
-  exit 1
-fi
-
 
 if [[ "${list}" == "true" ]]; then
-  gh run list -b "$branch_name" -w "$workflow_name" -s "waiting"
+  gh run list -b "$branch_name" -s "waiting"
 else
+  if [[ "${workflow_name}" == "" && "${environment}" == "" ]]; then
+    usage
+    exit 1
+  fi
   TARGET_ENV=$(gh api \
       -H "$GH_REST_API_VERSION" \
       -H "$GH_ACCEPT" \
     repos/:owner/:repo/environments | jq ".environments[] | select(.name==\"$environment\") | .id")
-
   RUN_ID=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
   approval_payload "$TARGET_ENV" "$comment" | gh api --silent --method POST -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" repos/:owner/:repo/actions/runs/"$RUN_ID"/pending_deployments --input -
 fi
