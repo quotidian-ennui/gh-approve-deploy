@@ -8,40 +8,43 @@ export GH_PAGER="cat"
 usage() {
   cat << EOF
 
-Usage: gh approve-deploy -e "environment" -w "workflow-name"
+Usage: gh approve-deploy -w "workflow-name"
   Required arguments
-  -e  The environment requiring approval
   -w  The workflow name
 
   Optional arguments:
   -b The branch name (default is the default branch)
   -c Comment for the approval (default is 'deploy it')
-  -l list workflow runs in a 'waiting' state
+  -l list workflow runs in a 'waiting' state on the branch
+  [-e the environment requiring approval. This parameter is ignored]
 
 EXAMPLES
-gh approve-deploy -e "production" -w "deploy-to-prod"
+gh approve-deploy -w "deploy-to-prod"
 
 EOF
+ exit 1
 }
 
 function approval_payload() {
   printf "{\"environment_ids\": [%s], \"state\":\"approved\", \"comment\": \"$2\"}" "$1"
 }
 
+function gh_api() {
+  gh api -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" "$@"
+}
 
-gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner")
+gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
 
 if [[ "$gh_repo" == "" ]]; then
   echo "I don't appear to be in a repo that's attached to github..."
   usage
-  exit 1
 fi
 
 environment=''
 workflow_name=''
-branch_name=$(gh api /repos/:owner/:repo --jq '.default_branch')
-comment="deploy it"
-list="false"
+branch_name=$(gh_api /repos/:owner/:repo --jq '.default_branch')
+comment=":shipit: deploy it"
+list=''
 
 while getopts 'e:w:b:c:lh' flag; do
     case "${flag}" in
@@ -52,27 +55,25 @@ while getopts 'e:w:b:c:lh' flag; do
     l) list="true" ;;
     h)
       usage
-      exit 1
       ;;
     *)
      usage
-     exit 1
      ;;
     esac
 done
 
+if [[ -n "$environment" ]]; then
+  echo "Ignoring -e parameter, will get the id from the pending_deployment"
+fi
 
-if [[ "${list}" == "true" ]]; then
+if [[ -n "${list}" ]]; then
   gh run list -b "$branch_name" -s "waiting"
 else
-  if [[ "${workflow_name}" == "" && "${environment}" == "" ]]; then
+  if [[ -z "${workflow_name}" ]]; then
+    echo "No Workflow specified"
     usage
-    exit 1
   fi
-  TARGET_ENV=$(gh api \
-      -H "$GH_REST_API_VERSION" \
-      -H "$GH_ACCEPT" \
-    repos/:owner/:repo/environments | jq ".environments[] | select(.name==\"$environment\") | .id")
-  RUN_ID=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
-  approval_payload "$TARGET_ENV" "$comment" | gh api --silent --method POST -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" repos/:owner/:repo/actions/runs/"$RUN_ID"/pending_deployments --input -
+  run_id=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
+  target_env=$(gh_api repos/:owner/:repo/actions/runs/"$run_id"/pending_deployments | jq ".[].environment.id")
+  approval_payload "$target_env" "$comment" | gh_api --silent --method POST repos/:owner/:repo/actions/runs/"$run_id"/pending_deployments --input -
 fi

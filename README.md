@@ -22,24 +22,24 @@ Assuming that you have an existing workflow that is in a state "waiting" because
 
 ```
 cd $DIRECTORY_OF_YOUR_REPO
-gh approve-deploy -e 'environment' -w 'workflow-name'
+gh approve-deploy -w 'workflow-name'
 ```
 
 ```
 bsh ❯ gh approve-deploy
 
-Usage: gh approve-deploy -e "environment" -w "workflow-name"
+Usage: gh approve-deploy -w "workflow-name"
   Required arguments
-  -e  The environment requiring approval
   -w  The workflow name
 
   Optional arguments:
   -b The branch name (default is the default branch)
   -c Comment for the approval (default is 'deploy it')
-  -l list workflow runs in a 'waiting' state
+  -l list workflow runs in a 'waiting' state on the branch
+  [-e the environment requiring approval. This parameter is ignored]
 
 EXAMPLES
-gh approve-deploy -e "production" -w "deploy-to-prod"
+gh approve-deploy -w "deploy-to-prod"
 ```
 
 ## License
