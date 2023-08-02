@@ -3,7 +3,10 @@ set -eo pipefail
 
 GH_REST_API_VERSION="X-GitHub-Api-Version: 2022-11-28"
 GH_ACCEPT="Accept: application/vnd.github+json"
-export GH_PAGER="cat"
+LIST_TEMPLATE='{{tablerow "Status" "Workflow" "Branch"  "URL" "Started" -}}
+{{ range . -}}
+{{tablerow (.status | autocolor "green") (.workflowName | autocolor "yellow") (.headBranch) (.url | autocolor "cyan")  (timeago .startedAt) -}}
+{{end -}}'
 
 usage() {
   cat << EOF
@@ -42,7 +45,7 @@ fi
 
 environment=''
 workflow_name=''
-branch_name=$(gh_api /repos/:owner/:repo --jq '.default_branch')
+branch_name=''
 comment=":shipit: deploy it"
 list=''
 
@@ -53,12 +56,8 @@ while getopts 'e:w:b:c:lh' flag; do
     b) branch_name="${OPTARG}" ;;
     c) comment="${OPTARG}" ;;
     l) list="true" ;;
-    h)
-      usage
-      ;;
-    *)
-     usage
-     ;;
+    h) usage ;;
+    *) usage ;;
     esac
 done
 
@@ -67,11 +66,14 @@ if [[ -n "$environment" ]]; then
 fi
 
 if [[ -n "${list}" ]]; then
-  gh run list -b "$branch_name" -s "waiting"
+  gh run list -s "waiting" --json "status,displayTitle,workflowName,headBranch,startedAt,url" -t "$LIST_TEMPLATE"
 else
   if [[ -z "${workflow_name}" ]]; then
     echo "No Workflow specified"
     usage
+  fi
+  if [[ -z "$branch_name" ]]; then
+    branch_name=$(gh_api /repos/:owner/:repo --jq '.default_branch')
   fi
   run_id=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
   target_env=$(gh_api repos/:owner/:repo/actions/runs/"$run_id"/pending_deployments | jq ".[].environment.id")
