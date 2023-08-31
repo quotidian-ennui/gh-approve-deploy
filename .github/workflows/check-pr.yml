@@ -7,16 +7,13 @@ on:
 permissions: {}
 
 jobs:
-  code-quality:
+  shellcheck:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - uses: crate-ci/typos@v1.16.8
       - uses: reviewdog/action-shellcheck@v1
         with:
           reporter: github-pr-review
@@ -24,9 +21,35 @@ jobs:
           fail_on_error: true
           github_token: ${{ secrets.github_token }}
 
+  committed:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: |
+      github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: committed
+        uses: crate-ci/committed@v1.0.18
+        with:
+          args: --no-merge-commit
+
+  typos:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v3
+      - name: typos
+        uses: crate-ci/typos@v1.16.1
+
   dependabot-merge:
     needs:
-      - code-quality
+      - shellcheck
+      - committed
+      - typos
     permissions:
       contents: write
       pull-requests: write
@@ -35,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Find associated PR
-      uses: jwalton/gh-find-current-pr@v1
+      uses: jwalton/gh-find-current-pr@v1.3.2
       id: findpr
       with:
         github-token: ${{ github.token }}
@@ -43,7 +66,7 @@ jobs:
         sha: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
     - name: merge-if-built
       continue-on-error: true
-      uses: fastify/github-action-merge-dependabot@v3
+      uses: fastify/github-action-merge-dependabot@v3.9.1
       with:
         pr-number: ${{ steps.findpr.outputs.pr }}
         target: minor
