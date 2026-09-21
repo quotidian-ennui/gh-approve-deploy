@@ -9,23 +9,29 @@ LIST_TEMPLATE='{{tablerow "Status" "Workflow" "Branch"  "URL" "Started" -}}
 {{end -}}'
 
 usage() {
-  cat << EOF
+  cat <<EOF
 
 Usage: gh approve-deploy -w "workflow-name"
-  Required arguments
+       gh approve-deploy https://github.com/OWNER/REPO/actions/runs/RUN_ID
+
+  Required arguments (unless a run URL is given)
   -w  The workflow name
 
   Optional arguments:
   -b The branch name (default is the default branch)
   -c Comment for the approval (default is 'deploy it')
   -l list workflow runs in a 'waiting' state on the branch
-  [-e the environment requiring approval. This parameter is ignored]
+
+  A workflow run URL can be given as a positional argument instead of -w.
+  The repository and run id are extracted from the URL, so it works
+  outside of a git checkout.
 
 EXAMPLES
 gh approve-deploy -w "deploy-to-prod"
+gh approve-deploy https://github.com/quotidian-ennui/local-cluster-terraform/actions/runs/35607976874
 
 EOF
- exit 1
+  exit 1
 }
 
 function approval_payload() {
@@ -36,46 +42,63 @@ function gh_api() {
   gh api -H "$GH_REST_API_VERSION" -H "$GH_ACCEPT" "$@"
 }
 
-gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
+workflow_name=''
+branch_name=''
+comment=":shipit: deploy it"
+list=''
+gh_repo=''
+run_id=''
+url_mode=''
+
+while getopts 'e:w:b:c:lh' flag; do
+  case "${flag}" in
+  w) workflow_name="${OPTARG}" ;;
+  b) branch_name="${OPTARG}" ;;
+  c) comment="${OPTARG}" ;;
+  l) list="true" ;;
+  h) usage ;;
+  *) usage ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+if [[ $# -gt 0 ]]; then
+  if [[ "$1" =~ ^https://github\.com/([^/]+)/([^/]+)/actions/runs/([0-9]+) ]]; then
+    gh_repo="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+    run_id="${BASH_REMATCH[3]}"
+    url_mode='true'
+  else
+    echo "Invalid argument [$1]"
+    usage
+  fi
+fi
+
+if [[ -z "$gh_repo" ]]; then
+  gh_repo=$(gh repo view --json "nameWithOwner" -q ".nameWithOwner") || true
+fi
 
 if [[ "$gh_repo" == "" ]]; then
   echo "I don't appear to be in a repo that's attached to github..."
   usage
 fi
 
-environment=''
-workflow_name=''
-branch_name=''
-comment=":shipit: deploy it"
-list=''
-
-while getopts 'e:w:b:c:lh' flag; do
-    case "${flag}" in
-    e) environment="${OPTARG}" ;;
-    w) workflow_name="${OPTARG}" ;;
-    b) branch_name="${OPTARG}" ;;
-    c) comment="${OPTARG}" ;;
-    l) list="true" ;;
-    h) usage ;;
-    *) usage ;;
-    esac
-done
-
-if [[ -n "$environment" ]]; then
-  echo "Ignoring -e parameter, will get the id from the pending_deployment"
-fi
-
 if [[ -n "${list}" ]]; then
-  gh run list -s "waiting" --json "status,displayTitle,workflowName,headBranch,startedAt,url" -t "$LIST_TEMPLATE"
+  gh run list --repo "$gh_repo" -s "waiting" --json "status,displayTitle,workflowName,headBranch,startedAt,url" -t "$LIST_TEMPLATE"
 else
-  if [[ -z "${workflow_name}" ]]; then
-    echo "No Workflow specified"
-    usage
+  if [[ "$url_mode" == 'true' ]]; then
+    if [[ -n "${workflow_name}" ]]; then
+      echo "Ignoring -w parameter, run id extracted from the URL"
+    fi
+  else
+    if [[ -z "${workflow_name}" ]]; then
+      echo "No Workflow specified"
+      usage
+    fi
+    if [[ -z "$branch_name" ]]; then
+      branch_name=$(gh_api repos/"$gh_repo" --jq '.default_branch')
+    fi
+    run_id=$(gh run list --repo "$gh_repo" -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
   fi
-  if [[ -z "$branch_name" ]]; then
-    branch_name=$(gh_api /repos/:owner/:repo --jq '.default_branch')
-  fi
-  run_id=$(gh run list -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
-  target_env=$(gh_api repos/:owner/:repo/actions/runs/"$run_id"/pending_deployments | jq ".[].environment.id")
-  approval_payload "$target_env" "$comment" | gh_api --silent --method POST repos/:owner/:repo/actions/runs/"$run_id"/pending_deployments --input -
+  target_env=$(gh_api repos/"$gh_repo"/actions/runs/"$run_id"/pending_deployments | jq ".[].environment.id")
+  approval_payload "$target_env" "$comment" | gh_api --silent --method POST repos/"$gh_repo"/actions/runs/"$run_id"/pending_deployments --input -
 fi
