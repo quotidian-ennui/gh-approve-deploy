@@ -68,7 +68,7 @@ if [[ $# -gt 0 ]]; then
     run_id="${BASH_REMATCH[3]}"
     url_mode='true'
   else
-    echo "Invalid argument [$1]"
+    echo "🚫 Could not parse: [$1]; abort"
     usage
   fi
 fi
@@ -78,7 +78,7 @@ if [[ -z "$gh_repo" ]]; then
 fi
 
 if [[ "$gh_repo" == "" ]]; then
-  echo "I don't appear to be in a repo that's attached to github..."
+  echo "🚫 Not running in a github repo or no derivable github repo; abort"
   usage
 fi
 
@@ -87,11 +87,11 @@ if [[ -n "${list}" ]]; then
 else
   if [[ "$url_mode" == 'true' ]]; then
     if [[ -n "${workflow_name}" ]]; then
-      echo "Ignoring -w parameter, run id extracted from the URL"
+      echo "🔎 Ignoring -w parameter, run id extracted from the URL"
     fi
   else
     if [[ -z "${workflow_name}" ]]; then
-      echo "No Workflow specified"
+      echo "🚫 No Workflow specified"
       usage
     fi
     if [[ -z "$branch_name" ]]; then
@@ -100,5 +100,6 @@ else
     run_id=$(gh run list --repo "$gh_repo" -b "$branch_name" --json "databaseId" -w "$workflow_name" -s "waiting" -q ".[].databaseId")
   fi
   target_env=$(gh_api repos/"$gh_repo"/actions/runs/"$run_id"/pending_deployments | jq ".[].environment.id")
+  echo "ℹ️ Approving $run_id in $gh_repo for $target_env"
   approval_payload "$target_env" "$comment" | gh_api --silent --method POST repos/"$gh_repo"/actions/runs/"$run_id"/pending_deployments --input -
 fi
